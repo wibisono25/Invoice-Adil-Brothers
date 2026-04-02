@@ -450,12 +450,14 @@ export default function App() {
             {/* Header */}
             <div className="flex justify-between items-stretch mb-6 bg-primary text-white -mx-8 -mt-8 p-8">
               <div className="flex items-center gap-3">
-                <img 
-                  src={LOGO_URL} 
-                  alt="Logo" 
-                  className="h-10 w-auto object-contain bg-primary p-1 rounded-sm mix-blend-screen"
-                  referrerPolicy="no-referrer"
-                />
+                <div className="bg-white p-1.5 rounded-md flex items-center justify-center shadow-sm">
+                  <img 
+                    src={LOGO_URL} 
+                    alt="Logo" 
+                    className="h-8 w-auto object-contain"
+                    referrerPolicy="no-referrer"
+                  />
+                </div>
                 <div>
                   <h4 className="font-display font-black text-sm text-white uppercase leading-tight">
                     UD Adil Brothers
