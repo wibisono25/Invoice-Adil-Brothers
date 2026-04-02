@@ -50,7 +50,7 @@ interface BuyerRecord {
   name: string;
 }
 
-const LOGO_URL = "https://lh3.googleusercontent.com/aida/ADBb0ugXAfjfI316Q_CGqS44TM4CBAEuvBP2Am6HEc-g-58fPagzd479bOFl8VHim0fXbdwjj0EeR3FsI1nXzqhUxaGSnGstBsqK4tJ6CxkQmJ6J18E4mYKBtjzs40hH1eJApoDYjA7x4Uo1CCJRklKanQaDOVzg6xJLyWsDldF8HDDdtwpVfXd0Nx46mSALfPkgR8lxzYP7-gurVpijHhqPQH6R7HIIoNrlrOtTL_d_r3i9eIfQBVTTX0Y8O-uNvcoTL2NXqIdlsrKDA9w";
+const LOGO_URL = "https://i.ibb.co.com/KcX31GXS/logo-ud-adil-baru.png";
 
 export default function App() {
   const [activeNav, setActiveNav] = useState<NavType>('editor');
@@ -445,19 +445,25 @@ export default function App() {
         <div className="fixed -left-[9999px] top-0">
           <div 
             id="invoice-download-target"
-            className="bg-white p-8 w-[148mm] min-h-[210mm] text-on-surface flex flex-col"
+            className="bg-white p-8 w-[148mm] min-h-[210mm] text-on-surface flex flex-col relative overflow-hidden"
           >
+            {/* Watermark */}
+            <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-[35deg] pointer-events-none z-0 opacity-[0.03] whitespace-nowrap select-none">
+              <p className="text-[100px] font-black uppercase tracking-[0.2em]">
+                ADIL BROTHERS
+              </p>
+            </div>
+
             {/* Header */}
-            <div className="flex justify-between items-stretch mb-6 bg-primary text-white -mx-8 -mt-8 p-8">
+            <div className="flex justify-between items-stretch mb-6 bg-primary text-white -mx-8 -mt-8 p-8 relative z-10">
               <div className="flex items-center gap-3">
-                <div className="bg-white p-1.5 rounded-md flex items-center justify-center shadow-sm">
-                  <img 
-                    src={LOGO_URL} 
-                    alt="Logo" 
-                    className="h-8 w-auto object-contain"
-                    referrerPolicy="no-referrer"
-                  />
-                </div>
+                <img 
+                  src={LOGO_URL} 
+                  alt="Logo Adil Brothers" 
+                  className="h-12 w-auto block"
+                  referrerPolicy="no-referrer"
+                  crossOrigin="anonymous"
+                />
                 <div>
                   <h4 className="font-display font-black text-sm text-white uppercase leading-tight">
                     UD Adil Brothers
@@ -600,9 +606,10 @@ export default function App() {
         <div className="flex items-center gap-2 sm:gap-3">
           <img 
             src={LOGO_URL} 
-            alt="Logo" 
-            className="h-6 sm:h-8 w-auto object-contain bg-primary p-0.5 rounded-sm mix-blend-screen"
+            alt="Logo Adil Brothers" 
+            className="h-8 w-auto block"
             referrerPolicy="no-referrer"
+            crossOrigin="anonymous"
           />
           <h1 className="font-display font-extrabold text-sm sm:text-lg text-white tracking-tight truncate max-w-[100px] sm:max-w-none">
             Adil Brothers
@@ -873,16 +880,24 @@ export default function App() {
 
                 <div 
                   id="invoice-preview"
-                  className="invoice-a5-preview bg-white editorial-shadow rounded-lg p-6 sm:p-8 flex flex-col text-on-surface overflow-hidden border border-outline-variant/10"
+                  className="invoice-a5-preview bg-white editorial-shadow rounded-lg p-6 sm:p-8 flex flex-col text-on-surface overflow-hidden border border-outline-variant/10 relative"
                 >
+                  {/* Watermark */}
+                  <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 -rotate-[35deg] pointer-events-none z-0 opacity-[0.03] whitespace-nowrap select-none">
+                    <p className="text-[60px] font-black uppercase tracking-[0.2em]">
+                      ADIL BROTHERS
+                    </p>
+                  </div>
+
                   {/* Header */}
-                  <div className="flex justify-between items-stretch mb-6 bg-primary text-white -mx-6 -mt-6 p-6 rounded-t-lg">
+                  <div className="flex justify-between items-stretch mb-6 bg-primary text-white -mx-6 -mt-6 p-6 rounded-t-lg relative z-10">
                     <div className="flex items-center gap-3">
                       <img 
                         src={LOGO_URL} 
-                        alt="Logo" 
-                        className="h-10 w-auto object-contain bg-primary p-1 rounded-sm mix-blend-screen"
+                        alt="Logo Adil Brothers" 
+                        className="h-10 w-auto block"
                         referrerPolicy="no-referrer"
+                        crossOrigin="anonymous"
                       />
                       <div>
                         <h4 className="font-display font-black text-sm text-white uppercase leading-tight">
