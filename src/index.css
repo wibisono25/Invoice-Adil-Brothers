@@ -52,14 +52,14 @@
   
   .invoice-a5-preview {
     aspect-ratio: 148 / 210;
-    @apply w-full max-w-[420px] mx-auto text-[0.6rem] sm:text-[0.75rem];
+    @apply w-full max-w-[380px] mx-auto text-[0.55rem] sm:text-[0.7rem] leading-tight;
   }
 }
 
 @media print {
   @page {
     size: A5;
-    margin: 10mm;
+    margin: 0;
   }
   body * {
     visibility: hidden;
@@ -68,15 +68,17 @@
     visibility: visible;
   }
   #invoice-preview {
-    position: fixed;
-    left: 0;
-    top: 0;
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
     width: 148mm;
     height: 210mm;
     margin: 0;
-    padding: 10mm;
+    padding: 15mm;
     box-shadow: none;
     border: none;
-    font-size: 10pt;
+    font-size: 12pt;
+    background: white;
   }
 }

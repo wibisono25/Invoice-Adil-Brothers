@@ -127,17 +127,22 @@ export default function App() {
           let temp = '';
           let driver = '';
           let isDO = false;
+          let notes = item.notes || '';
           
           // Detect if it's a DO hidden inside 'eceran' category
           try {
-            const parsed = JSON.parse(item.notes);
-            if (parsed.isDO || item.category === 'do') {
+            if (item.notes && item.notes.trim().startsWith('{')) {
+              const parsed = JSON.parse(item.notes);
+              if (parsed.isDO || item.category === 'do') {
+                isDO = true;
+                temp = parsed.temp || '';
+                driver = parsed.driver || '';
+                notes = parsed.originalNotes || '';
+              }
+            } else if (item.category === 'do') {
               isDO = true;
-              temp = parsed.temp || '';
-              driver = parsed.driver || '';
             }
           } catch (e) {
-            // Fallback for old 'do' category if it exists
             if (item.category === 'do') isDO = true;
           }
 
@@ -150,7 +155,7 @@ export default function App() {
             time: item.time,
             qty: item.qty,
             price: item.price,
-            notes: item.notes,
+            notes: notes,
             shipping: item.shipping,
             debt: item.debt,
             type: item.type,
@@ -348,13 +353,13 @@ export default function App() {
         const mapped: InvoiceRecord = {
           id: updated.id,
           invNumber: updated.inv_number,
-          category: updated.category as TabType,
+          category: activeTab, // Use local activeTab instead of DB category
           buyer: updated.buyer,
           date: updated.date,
           time: updated.time,
           qty: updated.qty,
           price: updated.price,
-          notes: updated.notes,
+          notes: data.notes, // Use local notes
           shipping: updated.shipping,
           debt: updated.debt,
           type: updated.type,
@@ -380,13 +385,13 @@ export default function App() {
         const mapped: InvoiceRecord = {
           id: inserted.id,
           invNumber: inserted.inv_number,
-          category: inserted.category as TabType,
+          category: activeTab, // Use local activeTab
           buyer: inserted.buyer,
           date: inserted.date,
           time: inserted.time,
           qty: inserted.qty,
           price: inserted.price,
-          notes: inserted.notes,
+          notes: data.notes, // Use local notes
           shipping: inserted.shipping,
           debt: inserted.debt,
           type: inserted.type,
@@ -421,38 +426,21 @@ export default function App() {
   };
 
   const handleEdit = (inv: InvoiceRecord) => {
-    let temp = '';
-    let driver = '';
-    let notes = inv.notes;
-    let isDO = false;
-
-    try {
-      const parsed = JSON.parse(inv.notes);
-      if (parsed.isDO || inv.category === 'do') {
-        isDO = true;
-        temp = parsed.temp || '';
-        driver = parsed.driver || '';
-        notes = parsed.originalNotes || '';
-      }
-    } catch (e) {
-      if (inv.category === 'do') isDO = true;
-    }
-
     setData({
       buyer: inv.buyer,
       date: inv.date,
       time: inv.time,
       qty: inv.qty,
       price: inv.price,
-      notes: notes,
+      notes: inv.notes,
       shipping: inv.shipping,
       debt: inv.debt,
       type: inv.type,
-      temp,
-      driver
+      temp: inv.temp || '',
+      driver: inv.driver || ''
     });
     setInvNumber(inv.invNumber);
-    setActiveTab(isDO ? 'do' : inv.category);
+    setActiveTab(inv.category); // inv.category is already mapped correctly in fetchData
     setEditingId(inv.id);
     setActiveNav('editor');
   };
@@ -533,8 +521,10 @@ export default function App() {
         const imgProps = pdf.getImageProperties(imgData);
         const pdfWidth = pdf.internal.pageSize.getWidth();
         const pdfHeight = (imgProps.height * pdfWidth) / imgProps.width;
+        const pageHeight = pdf.internal.pageSize.getHeight();
+        const yOffset = (pageHeight - pdfHeight) / 2;
         
-        pdf.addImage(imgData, 'PNG', 0, 0, pdfWidth, pdfHeight);
+        pdf.addImage(imgData, 'PNG', 0, yOffset, pdfWidth, pdfHeight);
         pdf.save(`${inv.invNumber}.pdf`);
       } catch (error) {
         console.error("PDF Generation failed", error);
@@ -568,24 +558,24 @@ export default function App() {
                 <img 
                   src={LOGO_URL} 
                   alt="Logo Adil Brothers" 
-                  className="h-12 w-auto block"
+                  className={cn("h-12 w-auto block", invoiceToDownload.category === 'do' && "h-16")}
                   referrerPolicy="no-referrer"
                   crossOrigin="anonymous"
                 />
                 <div>
-                  <h4 className="font-display font-black text-sm text-white uppercase leading-tight">
+                  <h4 className={cn("font-display font-black text-sm text-white uppercase leading-tight", invoiceToDownload.category === 'do' && "text-base")}>
                     UD Adil Brothers
                   </h4>
-                  <p className="text-[8px] font-bold text-primary-container italic">
+                  <p className={cn("text-[8px] font-bold text-primary-container italic", invoiceToDownload.category === 'do' && "text-[10px]")}>
                     Supplier Susu Segar
                   </p>
                 </div>
               </div>
               <div className="text-right flex flex-col justify-center">
-                <h5 className="font-display font-black text-lg text-white tracking-tighter leading-none">
+                <h5 className={cn("font-display font-black text-lg text-white tracking-tighter leading-none", invoiceToDownload.category === 'do' && "text-2xl")}>
                   {invoiceToDownload.category === 'do' ? 'SURAT JALAN' : 'INVOICE'}
                 </h5>
-                <p className="text-[8px] font-bold text-[#ffffffcc] mt-1">
+                <p className={cn("text-[8px] font-bold text-[#ffffffcc] mt-1", invoiceToDownload.category === 'do' && "text-[10px]")}>
                   #{invoiceToDownload.invNumber}
                 </p>
               </div>
@@ -594,18 +584,18 @@ export default function App() {
             {/* Transaction Info */}
             <div className="grid grid-cols-2 gap-4 mb-6 pt-4 border-t border-dashed border-[#bfc8cd66]">
               <div className="space-y-1">
-                <p className="text-[7px] font-bold text-on-surface-variant uppercase tracking-widest">
+                <p className={cn("text-[7px] font-bold text-on-surface-variant uppercase tracking-widest", invoiceToDownload.category === 'do' && "text-[9px]")}>
                   {invoiceToDownload.category === 'do' ? 'TUJUAN PENGIRIMAN' : 'DITAGIHKAN KEPADA'}
                 </p>
-                <p className="text-[10px] font-black text-on-surface leading-tight">
+                <p className={cn("text-[10px] font-black text-on-surface leading-tight", invoiceToDownload.category === 'do' && "text-sm")}>
                   {invoiceToDownload.buyer || (invoiceToDownload.category === 'eceran' ? 'Umum / Eceran' : invoiceToDownload.category === 'pakan' ? 'Pembelian Pakan' : '-')}
                 </p>
               </div>
               <div className="text-right space-y-1">
-                <p className="text-[7px] font-bold text-on-surface-variant uppercase tracking-widest">
+                <p className={cn("text-[7px] font-bold text-on-surface-variant uppercase tracking-widest", invoiceToDownload.category === 'do' && "text-[9px]")}>
                   {invoiceToDownload.category === 'do' ? 'TANGGAL BERANGKAT' : 'TANGGAL TRANSAKSI'}
                 </p>
-                <p className="text-[9px] font-bold text-on-surface">
+                <p className={cn("text-[9px] font-bold text-on-surface", invoiceToDownload.category === 'do' && "text-xs")}>
                   {formatDateIndo(invoiceToDownload.date)} | {invoiceToDownload.time} WIB
                 </p>
               </div>
@@ -614,37 +604,37 @@ export default function App() {
             {/* Table */}
             <div className="flex-grow">
               {invoiceToDownload.category === 'do' ? (
-                <div className="space-y-6">
+                <div className="space-y-8">
                   <table className="w-full text-left">
                     <thead>
                       <tr className="border-b border-[#0c678033]">
-                        <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">No</th>
-                        <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">Deskripsi Barang</th>
-                        <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-right">Jumlah (Liter)</th>
+                        <th className="py-3 text-[10px] font-bold text-on-surface-variant uppercase">No</th>
+                        <th className="py-3 text-[10px] font-bold text-on-surface-variant uppercase">Deskripsi Barang</th>
+                        <th className="py-3 text-[10px] font-bold text-on-surface-variant uppercase text-right">Jumlah (Liter)</th>
                       </tr>
                     </thead>
-                    <tbody className="text-[9px]">
+                    <tbody className="text-xs">
                       <tr className="border-b border-[#bfc8cd1a]">
-                        <td className="py-3">1</td>
-                        <td className="py-3 font-bold">Susu Sapi Segar</td>
-                        <td className="py-3 text-right font-black">{invoiceToDownload.qty} L</td>
+                        <td className="py-4">1</td>
+                        <td className="py-4 font-bold text-sm">Susu Sapi Segar</td>
+                        <td className="py-4 text-right font-black text-base">{invoiceToDownload.qty} L</td>
                       </tr>
                     </tbody>
                   </table>
                   
-                  <div className="grid grid-cols-2 gap-4 p-4 bg-[#0c67800d] rounded-lg">
+                  <div className="grid grid-cols-2 gap-6 p-5 bg-[#0c67800d] rounded-xl">
                     <div className="flex items-center gap-3">
-                      <Thermometer size={16} className="text-primary" />
+                      <Thermometer size={18} className="text-primary" />
                       <div>
-                        <p className="text-[7px] font-bold text-on-surface-variant uppercase">Suhu Saat Berangkat</p>
-                        <p className="text-[11px] font-black text-primary">{invoiceToDownload.temp || '-'} °C</p>
+                        <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">Suhu Saat Berangkat</p>
+                        <p className="text-sm font-black text-primary">{invoiceToDownload.temp || '-'} °C</p>
                       </div>
                     </div>
                     <div className="flex items-center gap-3">
-                      <Clock size={16} className="text-primary" />
+                      <Clock size={18} className="text-primary" />
                       <div>
-                        <p className="text-[7px] font-bold text-on-surface-variant uppercase">Jam Berangkat</p>
-                        <p className="text-[11px] font-black text-primary">{invoiceToDownload.time} WIB</p>
+                        <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">Jam Berangkat</p>
+                        <p className="text-sm font-black text-primary">{invoiceToDownload.time} WIB</p>
                       </div>
                     </div>
                   </div>
@@ -734,27 +724,33 @@ export default function App() {
               <p className="text-center text-[8px] italic text-on-surface-variant mb-6">
                 {invoiceToDownload.category === 'do' 
                   ? "Barang telah diperiksa dan diterima dalam kondisi baik."
-                  : (invoiceToDownload.notes ? `"${invoiceToDownload.notes}"` : `"Terima kasih atas kepercayaan Anda memilih produk kami."`)}
+                  : (invoiceToDownload.notes && !invoiceToDownload.notes.trim().startsWith('{') ? `"${invoiceToDownload.notes}"` : `"Terima kasih atas kepercayaan Anda memilih produk kami."`)}
               </p>
-              <div className={`grid ${invoiceToDownload.category === 'do' ? 'grid-cols-3' : 'grid-cols-2'} gap-8 text-center text-[9px] font-bold`}>
-                <div className="space-y-12">
-                  <p>Penerima</p>
+            <div className={`grid ${invoiceToDownload.category === 'do' ? 'grid-cols-3' : 'grid-cols-2'} gap-8 text-center ${invoiceToDownload.category === 'do' ? 'text-[11px]' : 'text-[9px]'} font-bold`}>
+              <div className="flex flex-col justify-between h-24">
+                <p>Penerima</p>
+                <div className="mt-auto">
+                  <div className="h-5" /> {/* Spacer to match name height */}
                   <div className="border-b border-[#151d224d] mx-2" />
                 </div>
-                {invoiceToDownload.category === 'do' && (
-                  <div className="space-y-12">
-                    <p>Sopir (Driver)</p>
-                    <p className="font-black text-[10px]">{invoiceToDownload.driver || '................'}</p>
+              </div>
+              {invoiceToDownload.category === 'do' && (
+                <div className="flex flex-col justify-between h-24">
+                  <p>Sopir (Driver)</p>
+                  <div className="mt-auto">
+                    <p className="font-black text-sm mb-1">{invoiceToDownload.driver || '................'}</p>
                     <div className="border-b border-[#151d224d] mx-2" />
                   </div>
-                )}
-                <div className="space-y-12">
-                  <p>{invoiceToDownload.category === 'do' ? 'Pengirim' : 'Hormat Kami'}</p>
-                  <p className="font-black">UD Adil Brothers</p>
-                  {invoiceToDownload.category !== 'do' && <div className="border-b border-[#151d224d] mx-2" />}
-                  {invoiceToDownload.category === 'do' && <div className="border-b border-[#151d224d] mx-2" />}
+                </div>
+              )}
+              <div className="flex flex-col justify-between h-24">
+                <p>{invoiceToDownload.category === 'do' ? 'Pengirim' : 'Hormat Kami'}</p>
+                <div className="mt-auto">
+                  <p className="font-black text-sm mb-1">UD Adil Brothers</p>
+                  <div className="border-b border-[#151d224d] mx-2" />
                 </div>
               </div>
+            </div>
             </div>
           </div>
         </div>
@@ -1150,24 +1146,24 @@ export default function App() {
                       <img 
                         src={LOGO_URL} 
                         alt="Logo Adil Brothers" 
-                        className="h-10 w-auto block"
+                        className={cn("h-10 w-auto block", activeTab === 'do' && "h-14")}
                         referrerPolicy="no-referrer"
                         crossOrigin="anonymous"
                       />
                       <div>
-                        <h4 className="font-display font-black text-sm text-white uppercase leading-tight">
+                        <h4 className={cn("font-display font-black text-sm text-white uppercase leading-tight", activeTab === 'do' && "text-base")}>
                           UD Adil Brothers
                         </h4>
-                        <p className="text-[8px] font-bold text-primary-container italic">
+                        <p className={cn("text-[8px] font-bold text-primary-container italic", activeTab === 'do' && "text-[10px]")}>
                           Supplier Susu Segar
                         </p>
                       </div>
                     </div>
                     <div className="text-right flex flex-col justify-center">
-                      <h5 className="font-display font-black text-lg text-white tracking-tighter leading-none">
+                      <h5 className={cn("font-display font-black text-lg text-white tracking-tighter leading-none", activeTab === 'do' && "text-2xl")}>
                         {activeTab === 'do' ? 'SURAT JALAN' : 'INVOICE'}
                       </h5>
-                      <p className="text-[8px] font-bold text-[#ffffffcc] mt-1">
+                      <p className={cn("text-[8px] font-bold text-[#ffffffcc] mt-1", activeTab === 'do' && "text-[10px]")}>
                         #{invNumber}
                       </p>
                     </div>
@@ -1176,18 +1172,18 @@ export default function App() {
                   {/* Transaction Info */}
                   <div className="grid grid-cols-2 gap-4 mb-6 pt-4 border-t border-dashed border-[#bfc8cd66]">
                     <div className="space-y-1">
-                      <p className="text-[7px] font-bold text-on-surface-variant uppercase tracking-widest">
+                      <p className={cn("text-[7px] font-bold text-on-surface-variant uppercase tracking-widest", activeTab === 'do' && "text-[9px]")}>
                         {activeTab === 'do' ? 'TUJUAN PENGIRIMAN' : 'DITAGIHKAN KEPADA'}
                       </p>
-                      <p className="text-[10px] font-black text-on-surface leading-tight">
+                      <p className={cn("text-[10px] font-black text-on-surface leading-tight", activeTab === 'do' && "text-sm")}>
                         {data.buyer || (activeTab === 'eceran' ? 'Umum / Eceran' : activeTab === 'pakan' ? 'Pembelian Pakan' : activeTab === 'do' ? '-' : 'Pilih Pembeli')}
                       </p>
                     </div>
                     <div className="text-right space-y-1">
-                      <p className="text-[7px] font-bold text-on-surface-variant uppercase tracking-widest">
+                      <p className={cn("text-[7px] font-bold text-on-surface-variant uppercase tracking-widest", activeTab === 'do' && "text-[9px]")}>
                         {activeTab === 'do' ? 'TANGGAL BERANGKAT' : 'TANGGAL TRANSAKSI'}
                       </p>
-                      <p className="text-[9px] font-bold text-on-surface">
+                      <p className={cn("text-[9px] font-bold text-on-surface", activeTab === 'do' && "text-xs")}>
                         {formatDateIndo(data.date)} | {data.time} WIB
                       </p>
                     </div>
@@ -1196,37 +1192,37 @@ export default function App() {
                   {/* Table */}
                   <div className="flex-grow">
                     {activeTab === 'do' ? (
-                      <div className="space-y-6">
+                      <div className="space-y-8">
                         <table className="w-full text-left">
                           <thead>
                             <tr className="border-b border-[#0c678033]">
-                              <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">No</th>
-                              <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">Deskripsi Barang</th>
-                              <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-right">Jumlah (Liter)</th>
+                              <th className="py-3 text-[10px] font-bold text-on-surface-variant uppercase">No</th>
+                              <th className="py-3 text-[10px] font-bold text-on-surface-variant uppercase">Deskripsi Barang</th>
+                              <th className="py-3 text-[10px] font-bold text-on-surface-variant uppercase text-right">Jumlah (Liter)</th>
                             </tr>
                           </thead>
-                          <tbody className="text-[9px]">
+                          <tbody className="text-xs">
                             <tr className="border-b border-[#bfc8cd1a]">
-                              <td className="py-3">1</td>
-                              <td className="py-3 font-bold">Susu Sapi Segar</td>
-                              <td className="py-3 text-right font-black">{data.qty} L</td>
+                              <td className="py-4">1</td>
+                              <td className="py-4 font-bold text-sm">Susu Sapi Segar</td>
+                              <td className="py-4 text-right font-black text-base">{data.qty} L</td>
                             </tr>
                           </tbody>
                         </table>
                         
-                        <div className="grid grid-cols-2 gap-4 p-3 bg-[#0c67800d] rounded-lg">
-                          <div className="flex items-center gap-2">
-                            <Thermometer size={12} className="text-primary" />
+                        <div className="grid grid-cols-2 gap-6 p-5 bg-[#0c67800d] rounded-xl">
+                          <div className="flex items-center gap-3">
+                            <Thermometer size={18} className="text-primary" />
                             <div>
-                              <p className="text-[7px] font-bold text-on-surface-variant uppercase">Suhu Saat Berangkat</p>
-                              <p className="text-[10px] font-black text-primary">{data.temp || '-'} °C</p>
+                              <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">Suhu Saat Berangkat</p>
+                              <p className="text-sm font-black text-primary">{data.temp || '-'} °C</p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
-                            <Clock size={12} className="text-primary" />
+                          <div className="flex items-center gap-3">
+                            <Clock size={18} className="text-primary" />
                             <div>
-                              <p className="text-[7px] font-bold text-on-surface-variant uppercase">Jam Berangkat</p>
-                              <p className="text-[10px] font-black text-primary">{data.time} WIB</p>
+                              <p className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">Jam Berangkat</p>
+                              <p className="text-sm font-black text-primary">{data.time} WIB</p>
                             </div>
                           </div>
                         </div>
@@ -1316,25 +1312,31 @@ export default function App() {
                     <p className="text-center text-[8px] italic text-on-surface-variant mb-6">
                       {activeTab === 'do' 
                         ? "Barang telah diperiksa dan diterima dalam kondisi baik."
-                        : (data.notes ? `"${data.notes}"` : `"Terima kasih atas kepercayaan Anda memilih produk kami."`)}
+                        : (data.notes && !data.notes.trim().startsWith('{') ? `"${data.notes}"` : `"Terima kasih atas kepercayaan Anda memilih produk kami."`)}
                     </p>
-                    <div className={`grid ${activeTab === 'do' ? 'grid-cols-3' : 'grid-cols-2'} gap-4 text-center text-[8px] font-bold`}>
-                      <div className="space-y-10">
+                    <div className={`grid ${activeTab === 'do' ? 'grid-cols-3' : 'grid-cols-2'} gap-4 text-center ${activeTab === 'do' ? 'text-[10px]' : 'text-[8px]'} font-bold`}>
+                      <div className="flex flex-col justify-between h-20">
                         <p>Penerima</p>
-                        <div className="border-b border-[#151d224d] mx-2" />
-                      </div>
-                      {activeTab === 'do' && (
-                        <div className="space-y-10">
-                          <p>Sopir (Driver)</p>
-                          <p className="font-black text-[9px]">{data.driver || '................'}</p>
+                        <div className="mt-auto">
+                          <div className="h-4" /> {/* Spacer */}
                           <div className="border-b border-[#151d224d] mx-2" />
                         </div>
+                      </div>
+                      {activeTab === 'do' && (
+                        <div className="flex flex-col justify-between h-20">
+                          <p>Sopir (Driver)</p>
+                          <div className="mt-auto">
+                            <p className="font-black text-xs mb-1">{data.driver || '................'}</p>
+                            <div className="border-b border-[#151d224d] mx-2" />
+                          </div>
+                        </div>
                       )}
-                      <div className="space-y-10">
+                      <div className="flex flex-col justify-between h-20">
                         <p>{activeTab === 'do' ? 'Pengirim' : 'Hormat Kami'}</p>
-                        <p className="font-black text-[9px]">UD Adil Brothers</p>
-                        {activeTab !== 'do' && <div className="border-b border-[#151d224d] mx-2" />}
-                        {activeTab === 'do' && <div className="border-b border-[#151d224d] mx-2" />}
+                        <div className="mt-auto">
+                          <p className="font-black text-xs mb-1">UD Adil Brothers</p>
+                          <div className="border-b border-[#151d224d] mx-2" />
+                        </div>
                       </div>
                     </div>
                   </div>
