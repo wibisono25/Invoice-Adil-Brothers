@@ -13,7 +13,11 @@ import {
   Edit3,
   Save,
   Download,
-  Loader2
+  Loader2,
+  Truck,
+  Thermometer,
+  Clock,
+  User
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
@@ -26,7 +30,7 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-type TabType = 'eceran' | 'umkm' | 'pakan';
+type TabType = 'eceran' | 'umkm' | 'pakan' | 'do';
 type NavType = 'editor' | 'history';
 
 interface InvoiceRecord {
@@ -43,6 +47,8 @@ interface InvoiceRecord {
   debt: number;
   type: string;
   createdAt: string;
+  temp?: string;
+  driver?: string;
 }
 
 interface BuyerRecord {
@@ -69,7 +75,9 @@ export default function App() {
     notes: '',
     shipping: 0,
     debt: 0,
-    type: 'Konsentrat'
+    type: 'Konsentrat',
+    temp: '4',
+    driver: ''
   });
 
   const [invNumber, setInvNumber] = useState('');
@@ -90,39 +98,72 @@ export default function App() {
   // Fetch data from Supabase
   useEffect(() => {
     const fetchData = async () => {
+      if (!import.meta.env.VITE_SUPABASE_URL || !import.meta.env.VITE_SUPABASE_ANON_KEY) {
+        setIsLoading(false);
+        return;
+      }
+
       setIsLoading(true);
       try {
+        // Add a timeout to the fetch to prevent hanging
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Fetch timeout')), 5000)
+        );
+
         // Fetch Invoices
-        const { data: invData, error: invError } = await supabase
+        const fetchInvoicesPromise = supabase
           .from('invoices')
           .select('*')
           .order('created_at', { ascending: false });
         
+        const { data: invData, error: invError } = await Promise.race([
+          fetchInvoicesPromise,
+          timeoutPromise
+        ]) as any;
+        
         if (invError) throw invError;
         
-        const mappedInvoices: InvoiceRecord[] = (invData || []).map(item => ({
-          id: item.id,
-          invNumber: item.inv_number,
-          category: item.category as TabType,
-          buyer: item.buyer,
-          date: item.date,
-          time: item.time,
-          qty: item.qty,
-          price: item.price,
-          notes: item.notes,
-          shipping: item.shipping,
-          debt: item.debt,
-          type: item.type,
-          createdAt: item.created_at
-        }));
+        const mappedInvoices: InvoiceRecord[] = (invData || []).map(item => {
+          let temp = '';
+          let driver = '';
+          if (item.category === 'do') {
+            try {
+              const parsed = JSON.parse(item.notes);
+              temp = parsed.temp || '';
+              driver = parsed.driver || '';
+            } catch (e) {}
+          }
+          return {
+            id: item.id,
+            invNumber: item.inv_number,
+            category: item.category as TabType,
+            buyer: item.buyer,
+            date: item.date,
+            time: item.time,
+            qty: item.qty,
+            price: item.price,
+            notes: item.notes,
+            shipping: item.shipping,
+            debt: item.debt,
+            type: item.type,
+            createdAt: item.created_at,
+            temp,
+            driver
+          };
+        });
         
         setInvoices(mappedInvoices);
 
         // Fetch Buyers
-        const { data: buyerData, error: buyerError } = await supabase
+        const fetchBuyersPromise = supabase
           .from('umkm_buyers')
           .select('*')
           .order('name', { ascending: true });
+        
+        const { data: buyerData, error: buyerError } = await Promise.race([
+          fetchBuyersPromise,
+          timeoutPromise
+        ]) as any;
         
         if (buyerError) throw buyerError;
         setUmkmBuyers(buyerData || []);
@@ -140,9 +181,10 @@ export default function App() {
     if (!editingId) {
       const yyyymmdd = new Date().toISOString().split('T')[0].replace(/-/g, '');
       const random = Math.floor(1000 + Math.random() * 9000);
-      setInvNumber(`INV-${yyyymmdd}-${random}`);
+      const prefix = activeTab === 'do' ? 'DO' : 'INV';
+      setInvNumber(`${prefix}-${yyyymmdd}-${random}`);
     }
-  }, [editingId, activeNav]);
+  }, [editingId, activeNav, activeTab]);
 
   const formatRupiah = (num: number) => {
     return new Intl.NumberFormat('id-ID', {
@@ -242,6 +284,10 @@ export default function App() {
   };
 
   const handleSave = async () => {
+    const finalNotes = activeTab === 'do' 
+      ? JSON.stringify({ temp: data.temp, driver: data.driver, originalNotes: data.notes })
+      : data.notes;
+
     const invoiceData = {
       inv_number: invNumber,
       category: activeTab,
@@ -250,7 +296,7 @@ export default function App() {
       time: data.time,
       qty: data.qty,
       price: data.price,
-      notes: data.notes,
+      notes: finalNotes,
       shipping: data.shipping,
       debt: data.debt,
       type: data.type
@@ -280,7 +326,9 @@ export default function App() {
           shipping: updated.shipping,
           debt: updated.debt,
           type: updated.type,
-          createdAt: updated.created_at
+          createdAt: updated.created_at,
+          temp: activeTab === 'do' ? data.temp : '',
+          driver: activeTab === 'do' ? data.driver : ''
         };
         
         setInvoices(invoices.map(inv => inv.id === editingId ? mapped : inv));
@@ -307,7 +355,9 @@ export default function App() {
           shipping: inserted.shipping,
           debt: inserted.debt,
           type: inserted.type,
-          createdAt: inserted.created_at
+          createdAt: inserted.created_at,
+          temp: activeTab === 'do' ? data.temp : '',
+          driver: activeTab === 'do' ? data.driver : ''
         };
         
         setInvoices([mapped, ...invoices]);
@@ -323,7 +373,9 @@ export default function App() {
         notes: '',
         shipping: 0,
         debt: 0,
-        type: 'Konsentrat'
+        type: 'Konsentrat',
+        temp: '4',
+        driver: ''
       });
       
       setActiveNav('history');
@@ -334,16 +386,29 @@ export default function App() {
   };
 
   const handleEdit = (inv: InvoiceRecord) => {
+    let temp = '';
+    let driver = '';
+    let notes = inv.notes;
+    if (inv.category === 'do') {
+      try {
+        const parsed = JSON.parse(inv.notes);
+        temp = parsed.temp || '';
+        driver = parsed.driver || '';
+        notes = parsed.originalNotes || '';
+      } catch (e) {}
+    }
     setData({
       buyer: inv.buyer,
       date: inv.date,
       time: inv.time,
       qty: inv.qty,
       price: inv.price,
-      notes: inv.notes,
+      notes: notes,
       shipping: inv.shipping,
       debt: inv.debt,
-      type: inv.type
+      type: inv.type,
+      temp,
+      driver
     });
     setInvNumber(inv.invNumber);
     setActiveTab(inv.category);
@@ -389,7 +454,9 @@ export default function App() {
       notes: '',
       shipping: 0,
       debt: 0,
-      type: 'Konsentrat'
+      type: 'Konsentrat',
+      temp: '4',
+      driver: ''
     });
     setActiveNav('editor');
   };
@@ -475,7 +542,7 @@ export default function App() {
               </div>
               <div className="text-right flex flex-col justify-center">
                 <h5 className="font-display font-black text-lg text-white tracking-tighter leading-none">
-                  INVOICE
+                  {invoiceToDownload.category === 'do' ? 'SURAT JALAN' : 'INVOICE'}
                 </h5>
                 <p className="text-[8px] font-bold text-[#ffffffcc] mt-1">
                   #{invoiceToDownload.invNumber}
@@ -487,7 +554,7 @@ export default function App() {
             <div className="grid grid-cols-2 gap-4 mb-6 pt-4 border-t border-dashed border-[#bfc8cd66]">
               <div className="space-y-1">
                 <p className="text-[7px] font-bold text-on-surface-variant uppercase tracking-widest">
-                  DITAGIHKAN KEPADA
+                  {invoiceToDownload.category === 'do' ? 'TUJUAN PENGIRIMAN' : 'DITAGIHKAN KEPADA'}
                 </p>
                 <p className="text-[10px] font-black text-on-surface leading-tight">
                   {invoiceToDownload.buyer || (invoiceToDownload.category === 'eceran' ? 'Umum / Eceran' : invoiceToDownload.category === 'pakan' ? 'Pembelian Pakan' : '-')}
@@ -495,7 +562,7 @@ export default function App() {
               </div>
               <div className="text-right space-y-1">
                 <p className="text-[7px] font-bold text-on-surface-variant uppercase tracking-widest">
-                  TANGGAL TRANSAKSI
+                  {invoiceToDownload.category === 'do' ? 'TANGGAL BERANGKAT' : 'TANGGAL TRANSAKSI'}
                 </p>
                 <p className="text-[9px] font-bold text-on-surface">
                   {formatDateIndo(invoiceToDownload.date)} | {invoiceToDownload.time} WIB
@@ -505,95 +572,146 @@ export default function App() {
 
             {/* Table */}
             <div className="flex-grow">
-              <table className="w-full text-left">
-                <thead>
-                  <tr className="border-b border-[#0c678033]">
-                    <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">No</th>
-                    <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">Keterangan</th>
-                    <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-center">
-                      Qty ({invoiceToDownload.category === 'pakan' ? 'U' : 'L'})
-                    </th>
-                    <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-right">
-                      Harga/{invoiceToDownload.category === 'pakan' ? 'U' : 'L'}
-                    </th>
-                    <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-right">Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody className="text-[9px]">
-                  <tr className="border-b border-[#bfc8cd1a]">
-                    <td className="py-3">1</td>
-                    <td className="py-3 font-bold">
-                      {invoiceToDownload.category === 'pakan' ? `Pakan: ${invoiceToDownload.type}` : 'Susu Sapi Segar'}
-                    </td>
-                    <td className="py-3 text-center">{invoiceToDownload.qty}</td>
-                    <td className="py-3 text-right">{formatRupiah(invoiceToDownload.price)}</td>
-                    <td className="py-3 text-right font-black">{formatRupiah(invoiceToDownload.qty * invoiceToDownload.price)}</td>
-                  </tr>
-                  {invoiceToDownload.shipping > 0 && (
-                    <tr className="border-b border-[#bfc8cd1a]">
-                      <td className="py-3">2</td>
-                      <td className="py-3 font-bold">Ongkos Kirim</td>
-                      <td className="py-3 text-center">-</td>
-                      <td className="py-3 text-right">-</td>
-                      <td className="py-3 text-right font-black">{formatRupiah(invoiceToDownload.shipping)}</td>
+              {invoiceToDownload.category === 'do' ? (
+                <div className="space-y-6">
+                  <table className="w-full text-left">
+                    <thead>
+                      <tr className="border-b border-[#0c678033]">
+                        <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">No</th>
+                        <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">Deskripsi Barang</th>
+                        <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-right">Jumlah (Liter)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="text-[9px]">
+                      <tr className="border-b border-[#bfc8cd1a]">
+                        <td className="py-3">1</td>
+                        <td className="py-3 font-bold">Susu Sapi Segar</td>
+                        <td className="py-3 text-right font-black">{invoiceToDownload.qty} L</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                  
+                  <div className="grid grid-cols-2 gap-4 p-4 bg-[#0c67800d] rounded-lg">
+                    <div className="flex items-center gap-3">
+                      <Thermometer size={16} className="text-primary" />
+                      <div>
+                        <p className="text-[7px] font-bold text-on-surface-variant uppercase">Suhu Saat Berangkat</p>
+                        <p className="text-[11px] font-black text-primary">{invoiceToDownload.temp || '-'} °C</p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <Clock size={16} className="text-primary" />
+                      <div>
+                        <p className="text-[7px] font-bold text-on-surface-variant uppercase">Jam Berangkat</p>
+                        <p className="text-[11px] font-black text-primary">{invoiceToDownload.time} WIB</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="border-b border-[#0c678033]">
+                      <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">No</th>
+                      <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">Keterangan</th>
+                      <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-center">
+                        Qty ({invoiceToDownload.category === 'pakan' ? 'U' : 'L'})
+                      </th>
+                      <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-right">
+                        Harga/{invoiceToDownload.category === 'pakan' ? 'U' : 'L'}
+                      </th>
+                      <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-right">Subtotal</th>
                     </tr>
+                  </thead>
+                  <tbody className="text-[9px]">
+                    <tr className="border-b border-[#bfc8cd1a]">
+                      <td className="py-3">1</td>
+                      <td className="py-3 font-bold">
+                        {invoiceToDownload.category === 'pakan' ? `Pakan: ${invoiceToDownload.type}` : 'Susu Sapi Segar'}
+                      </td>
+                      <td className="py-3 text-center">{invoiceToDownload.qty}</td>
+                      <td className="py-3 text-right">{formatRupiah(invoiceToDownload.price)}</td>
+                      <td className="py-3 text-right font-black">{formatRupiah(invoiceToDownload.qty * invoiceToDownload.price)}</td>
+                    </tr>
+                    {invoiceToDownload.shipping > 0 && (
+                      <tr className="border-b border-[#bfc8cd1a]">
+                        <td className="py-3">2</td>
+                        <td className="py-3 font-bold">Ongkos Kirim</td>
+                        <td className="py-3 text-center">-</td>
+                        <td className="py-3 text-right">-</td>
+                        <td className="py-3 text-right font-black">{formatRupiah(invoiceToDownload.shipping)}</td>
+                      </tr>
+                    )}
+                    {invoiceToDownload.debt > 0 && (
+                      <tr className="border-b border-[#bfc8cd1a]">
+                        <td className="py-3">{invoiceToDownload.shipping > 0 ? 3 : 2}</td>
+                        <td className="py-3 font-bold">Piutang Sebelumnya</td>
+                        <td className="py-3 text-center">-</td>
+                        <td className="py-3 text-right">-</td>
+                        <td className="py-3 text-right font-black">{formatRupiah(invoiceToDownload.debt)}</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Totals / Footer */}
+            {invoiceToDownload.category !== 'do' ? (
+              <div className="mt-4 pt-4 border-t-2 border-[#87ceeb33]">
+                <div className="space-y-1">
+                  <div className="flex justify-between items-center text-[8px] text-on-surface-variant font-medium">
+                    <p>Subtotal Produk</p>
+                    <p>{formatRupiah(invoiceToDownload.qty * invoiceToDownload.price)}</p>
+                  </div>
+                  {invoiceToDownload.shipping > 0 && (
+                    <div className="flex justify-between items-center text-[8px] text-on-surface-variant font-medium">
+                      <p>Ongkos Kirim</p>
+                      <p>{formatRupiah(invoiceToDownload.shipping)}</p>
+                    </div>
                   )}
                   {invoiceToDownload.debt > 0 && (
-                    <tr className="border-b border-[#bfc8cd1a]">
-                      <td className="py-3">{invoiceToDownload.shipping > 0 ? 3 : 2}</td>
-                      <td className="py-3 font-bold">Piutang Sebelumnya</td>
-                      <td className="py-3 text-center">-</td>
-                      <td className="py-3 text-right">-</td>
-                      <td className="py-3 text-right font-black">{formatRupiah(invoiceToDownload.debt)}</td>
-                    </tr>
+                    <div className="flex justify-between items-center text-[8px] text-on-surface-variant font-medium">
+                      <p>Piutang Sebelumnya</p>
+                      <p>{formatRupiah(invoiceToDownload.debt)}</p>
+                    </div>
                   )}
-                </tbody>
-              </table>
-            </div>
-
-            {/* Totals */}
-            <div className="mt-4 pt-4 border-t-2 border-[#87ceeb33]">
-              <div className="space-y-1">
-                <div className="flex justify-between items-center text-[8px] text-on-surface-variant font-medium">
-                  <p>Subtotal Produk</p>
-                  <p>{formatRupiah(invoiceToDownload.qty * invoiceToDownload.price)}</p>
                 </div>
-                {invoiceToDownload.shipping > 0 && (
-                  <div className="flex justify-between items-center text-[8px] text-on-surface-variant font-medium">
-                    <p>Ongkos Kirim</p>
-                    <p>{formatRupiah(invoiceToDownload.shipping)}</p>
-                  </div>
-                )}
-                {invoiceToDownload.debt > 0 && (
-                  <div className="flex justify-between items-center text-[8px] text-on-surface-variant font-medium">
-                    <p>Piutang Sebelumnya</p>
-                    <p>{formatRupiah(invoiceToDownload.debt)}</p>
-                  </div>
-                )}
+                <div className="flex justify-between items-center mt-3 py-2.5 bg-[#0c67800d] px-3 rounded-md">
+                  <p className="text-[9px] font-black text-[#0c6780] uppercase tracking-widest">
+                    TOTAL KESELURUHAN
+                  </p>
+                  <p className="text-xs font-black text-[#0c6780]">
+                    {formatRupiah((invoiceToDownload.qty * invoiceToDownload.price) + invoiceToDownload.shipping + invoiceToDownload.debt)}
+                  </p>
+                </div>
               </div>
-              <div className="flex justify-between items-center mt-3 py-2.5 bg-[#0c67800d] px-3 rounded-md">
-                <p className="text-[9px] font-black text-[#0c6780] uppercase tracking-widest">
-                  TOTAL KESELURUHAN
-                </p>
-                <p className="text-xs font-black text-[#0c6780]">
-                  {formatRupiah(invoiceToDownload.qty * invoiceToDownload.price + invoiceToDownload.shipping + invoiceToDownload.debt)}
-                </p>
-              </div>
-            </div>
+            ) : null}
 
-            {/* Footer */}
+            {/* Footer Signatures */}
             <div className="mt-8 pt-4 border-t border-[#bfc8cd33]">
               <p className="text-center text-[8px] italic text-on-surface-variant mb-6">
-                {invoiceToDownload.notes ? `"${invoiceToDownload.notes}"` : `"Terima kasih atas kepercayaan Anda memilih produk kami."`}
+                {invoiceToDownload.category === 'do' 
+                  ? "Barang telah diperiksa dan diterima dalam kondisi baik."
+                  : (invoiceToDownload.notes ? `"${invoiceToDownload.notes}"` : `"Terima kasih atas kepercayaan Anda memilih produk kami."`)}
               </p>
-              <div className="grid grid-cols-2 gap-12 text-center text-[9px] font-bold">
+              <div className={`grid ${invoiceToDownload.category === 'do' ? 'grid-cols-3' : 'grid-cols-2'} gap-8 text-center text-[9px] font-bold`}>
                 <div className="space-y-12">
                   <p>Penerima</p>
-                  <div className="border-b border-[#151d224d] mx-4" />
+                  <div className="border-b border-[#151d224d] mx-2" />
                 </div>
+                {invoiceToDownload.category === 'do' && (
+                  <div className="space-y-12">
+                    <p>Sopir (Driver)</p>
+                    <p className="font-black text-[10px]">{invoiceToDownload.driver || '................'}</p>
+                    <div className="border-b border-[#151d224d] mx-2" />
+                  </div>
+                )}
                 <div className="space-y-12">
-                  <p>Hormat Kami</p>
+                  <p>{invoiceToDownload.category === 'do' ? 'Pengirim' : 'Hormat Kami'}</p>
                   <p className="font-black">UD Adil Brothers</p>
+                  {invoiceToDownload.category !== 'do' && <div className="border-b border-[#151d224d] mx-2" />}
+                  {invoiceToDownload.category === 'do' && <div className="border-b border-[#151d224d] mx-2" />}
                 </div>
               </div>
             </div>
@@ -661,19 +779,21 @@ export default function App() {
               className="space-y-8"
             >
               {/* Tab Navigation */}
-              <div className="bg-surface-container p-1 rounded-xl flex gap-1 overflow-x-auto">
-                {(['eceran', 'umkm', 'pakan'] as TabType[]).map((tab) => (
+              <div className="bg-surface-container p-1 rounded-xl flex gap-1 overflow-x-auto no-scrollbar">
+                {(['eceran', 'umkm', 'pakan', 'do'] as TabType[]).map((tab) => (
                   <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
                     className={cn(
-                      "flex-1 min-w-[100px] py-2.5 rounded-lg text-[11px] sm:text-sm font-bold transition-all capitalize",
+                      "flex-1 min-w-[60px] py-2.5 rounded-lg text-[10px] sm:text-xs font-bold transition-all capitalize whitespace-nowrap px-2",
                       activeTab === tab 
                         ? "bg-primary text-white shadow-sm" 
                         : "text-on-surface-variant hover:bg-white/50"
                     )}
                   >
-                    Penjualan {tab === 'umkm' ? 'UMKM' : tab}
+                    {tab === 'eceran' ? 'Eceran' : 
+                     tab === 'umkm' ? 'UMKM' : 
+                     tab === 'pakan' ? 'Pakan' : 'Surat DO'}
                   </button>
                 ))}
               </div>
@@ -681,128 +801,222 @@ export default function App() {
               {/* Configuration Forms */}
               <section className="bg-surface-container-lowest rounded-2xl p-6 editorial-shadow border border-outline-variant/20">
                 <div className="space-y-5">
-                  {activeTab === 'eceran' && (
-                    <div>
-                      <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                        Nama Pembeli (Opsional)
-                      </label>
-                      <input 
-                        type="text"
-                        value={data.buyer}
-                        onChange={(e) => setData({ ...data, buyer: e.target.value })}
-                        placeholder="Contoh: Bpk. Slamet"
-                        className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
-                      />
-                    </div>
-                  )}
-
-                  {activeTab === 'umkm' && (
-                    <div>
-                      <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                        Pilih Pembeli UMKM
-                      </label>
-                      <div className="space-y-2">
-                        <div className="flex gap-2">
-                          <select 
-                            value={data.buyer}
-                            onChange={(e) => setData({ ...data, buyer: e.target.value })}
-                            className="flex-grow bg-surface-container border-none rounded-lg py-3 px-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
-                          >
-                            <option value="">Pilih Pembeli</option>
-                            {umkmBuyers.map(buyer => (
-                              <option key={buyer.id} value={buyer.name}>{buyer.name}</option>
-                            ))}
-                          </select>
-                          <button 
-                            onClick={handleAddBuyer}
-                            className="bg-primary-container text-primary p-3 rounded-lg flex items-center justify-center active:scale-95 transition-all"
-                            title="Tambah Pembeli"
-                          >
-                            <Plus size={18} />
-                          </button>
-                        </div>
-                        {data.buyer && umkmBuyers.some(b => b.name === data.buyer) && (
-                          <div className="flex justify-end">
-                            <button 
-                              onClick={() => handleDeleteBuyer(data.buyer)}
-                              className="text-[10px] font-bold text-error flex items-center gap-1 hover:underline"
-                            >
-                              <Trash2 size={12} />
-                              Hapus pembeli terpilih
-                            </button>
+                  {activeTab === 'do' && (
+                    <div className="space-y-5">
+                      <div>
+                        <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                          Tujuan Pengiriman
+                        </label>
+                        <input 
+                          type="text"
+                          value={data.buyer}
+                          onChange={(e) => setData({ ...data, buyer: e.target.value })}
+                          placeholder="Contoh: IPS / Pabrik"
+                          className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                            Suhu Susu (°C)
+                          </label>
+                          <div className="relative">
+                            <Thermometer size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50" />
+                            <input 
+                              type="text"
+                              value={data.temp}
+                              onChange={(e) => setData({ ...data, temp: e.target.value })}
+                              className="w-full bg-surface-container border-none rounded-lg py-3 pl-9 pr-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
+                            />
                           </div>
-                        )}
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                            Nama Sopir
+                          </label>
+                          <div className="relative">
+                            <User size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50" />
+                            <input 
+                              type="text"
+                              value={data.driver}
+                              onChange={(e) => setData({ ...data, driver: e.target.value })}
+                              placeholder="Nama Sopir"
+                              className="w-full bg-surface-container border-none rounded-lg py-3 pl-9 pr-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                          Jumlah Susu (Liter)
+                        </label>
+                        <input 
+                          type="number"
+                          value={data.qty}
+                          onChange={(e) => setData({ ...data, qty: parseFloat(e.target.value) || 0 })}
+                          className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm font-bold focus:ring-2 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                            Tanggal Berangkat
+                          </label>
+                          <input 
+                            type="date"
+                            value={data.date}
+                            onChange={(e) => setData({ ...data, date: e.target.value })}
+                            className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                            Jam Berangkat
+                          </label>
+                          <div className="relative">
+                            <Clock size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant/50" />
+                            <input 
+                              type="time"
+                              value={data.time}
+                              onChange={(e) => setData({ ...data, time: e.target.value })}
+                              className="w-full bg-surface-container border-none rounded-lg py-3 pl-9 pr-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
+                            />
+                          </div>
+                        </div>
                       </div>
                     </div>
                   )}
 
-                  {activeTab === 'pakan' && (
-                    <div>
-                      <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                        Jenis Pakan
-                      </label>
-                      <select 
-                        value={data.type}
-                        onChange={(e) => setData({ ...data, type: e.target.value })}
-                        className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
-                      >
-                        <option value="Konsentrat">Konsentrat</option>
-                        <option value="Bekatul">Bekatul</option>
-                        <option value="Ampas Tahu">Ampas Tahu</option>
-                        <option value="Polard">Polard</option>
-                      </select>
+                  {activeTab !== 'do' && (
+                    <div className="space-y-5">
+                      {activeTab === 'eceran' && (
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                            Nama Pembeli (Opsional)
+                          </label>
+                          <input 
+                            type="text"
+                            value={data.buyer}
+                            onChange={(e) => setData({ ...data, buyer: e.target.value })}
+                            placeholder="Contoh: Bpk. Slamet"
+                            className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
+                          />
+                        </div>
+                      )}
+
+                      {activeTab === 'umkm' && (
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                            Pilih Pembeli UMKM
+                          </label>
+                          <div className="space-y-2">
+                            <div className="flex gap-2">
+                              <select 
+                                value={data.buyer}
+                                onChange={(e) => setData({ ...data, buyer: e.target.value })}
+                                className="flex-grow bg-surface-container border-none rounded-lg py-3 px-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
+                              >
+                                <option value="">Pilih Pembeli</option>
+                                {umkmBuyers.map(buyer => (
+                                  <option key={buyer.id} value={buyer.name}>{buyer.name}</option>
+                                ))}
+                              </select>
+                              <button 
+                                onClick={handleAddBuyer}
+                                className="bg-primary-container text-primary p-3 rounded-lg flex items-center justify-center active:scale-95 transition-all"
+                                title="Tambah Pembeli"
+                              >
+                                <Plus size={18} />
+                              </button>
+                            </div>
+                            {data.buyer && umkmBuyers.some(b => b.name === data.buyer) && (
+                              <div className="flex justify-end">
+                                <button 
+                                  onClick={() => handleDeleteBuyer(data.buyer)}
+                                  className="text-[10px] font-bold text-error flex items-center gap-1 hover:underline"
+                                >
+                                  <Trash2 size={12} />
+                                  Hapus pembeli terpilih
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {activeTab === 'pakan' && (
+                        <div>
+                          <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                            Jenis Pakan
+                          </label>
+                          <select 
+                            value={data.type}
+                            onChange={(e) => setData({ ...data, type: e.target.value })}
+                            className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
+                          >
+                            <option value="Konsentrat">Konsentrat</option>
+                            <option value="Bekatul">Bekatul</option>
+                            <option value="Ampas Tahu">Ampas Tahu</option>
+                            <option value="Polard">Polard</option>
+                          </select>
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                        Tanggal
-                      </label>
-                      <input 
-                        type="date"
-                        value={data.date}
-                        onChange={(e) => setData({ ...data, date: e.target.value })}
-                        className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
-                      />
+                  {activeTab !== 'do' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                          Tanggal
+                        </label>
+                        <input 
+                          type="date"
+                          value={data.date}
+                          onChange={(e) => setData({ ...data, date: e.target.value })}
+                          className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                          Waktu
+                        </label>
+                        <input 
+                          type="time"
+                          value={data.time}
+                          onChange={(e) => setData({ ...data, time: e.target.value })}
+                          className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                        Waktu
-                      </label>
-                      <input 
-                        type="time"
-                        value={data.time}
-                        onChange={(e) => setData({ ...data, time: e.target.value })}
-                        className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm focus:ring-2 focus:ring-primary-container transition-all"
-                      />
-                    </div>
-                  </div>
+                  )}
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                        Jumlah ({activeTab === 'pakan' ? 'kg/sak' : 'L'})
-                      </label>
-                      <input 
-                        type="number"
-                        value={data.qty}
-                        onChange={(e) => setData({ ...data, qty: parseFloat(e.target.value) || 0 })}
-                        className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm font-bold focus:ring-2 focus:ring-primary-container transition-all"
-                      />
+                  {activeTab !== 'do' && (
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                          Jumlah ({activeTab === 'pakan' ? 'kg/sak' : 'L'})
+                        </label>
+                        <input 
+                          type="number"
+                          value={data.qty}
+                          onChange={(e) => setData({ ...data, qty: parseFloat(e.target.value) || 0 })}
+                          className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm font-bold focus:ring-2 focus:ring-primary-container transition-all"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
+                          Harga/Satuan (Rp)
+                        </label>
+                        <input 
+                          type="number"
+                          value={data.price}
+                          onChange={(e) => setData({ ...data, price: parseFloat(e.target.value) || 0 })}
+                          className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm font-bold focus:ring-2 focus:ring-primary-container transition-all"
+                        />
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-on-surface-variant mb-1.5 uppercase tracking-wider">
-                        Harga/Satuan (Rp)
-                      </label>
-                      <input 
-                        type="number"
-                        value={data.price}
-                        onChange={(e) => setData({ ...data, price: parseFloat(e.target.value) || 0 })}
-                        className="w-full bg-surface-container border-none rounded-lg py-3 px-4 text-sm font-bold focus:ring-2 focus:ring-primary-container transition-all"
-                      />
-                    </div>
-                  </div>
+                  )}
 
                   {activeTab === 'umkm' && (
                     <div className="space-y-4 pt-2 border-t border-outline-variant/10">
@@ -910,7 +1124,7 @@ export default function App() {
                     </div>
                     <div className="text-right flex flex-col justify-center">
                       <h5 className="font-display font-black text-lg text-white tracking-tighter leading-none">
-                        INVOICE
+                        {activeTab === 'do' ? 'SURAT JALAN' : 'INVOICE'}
                       </h5>
                       <p className="text-[8px] font-bold text-[#ffffffcc] mt-1">
                         #{invNumber}
@@ -922,15 +1136,15 @@ export default function App() {
                   <div className="grid grid-cols-2 gap-4 mb-6 pt-4 border-t border-dashed border-[#bfc8cd66]">
                     <div className="space-y-1">
                       <p className="text-[7px] font-bold text-on-surface-variant uppercase tracking-widest">
-                        DITAGIHKAN KEPADA
+                        {activeTab === 'do' ? 'TUJUAN PENGIRIMAN' : 'DITAGIHKAN KEPADA'}
                       </p>
                       <p className="text-[10px] font-black text-on-surface leading-tight">
-                        {data.buyer || (activeTab === 'eceran' ? 'Umum / Eceran' : activeTab === 'pakan' ? 'Pembelian Pakan' : 'Pilih Pembeli')}
+                        {data.buyer || (activeTab === 'eceran' ? 'Umum / Eceran' : activeTab === 'pakan' ? 'Pembelian Pakan' : activeTab === 'do' ? '-' : 'Pilih Pembeli')}
                       </p>
                     </div>
                     <div className="text-right space-y-1">
                       <p className="text-[7px] font-bold text-on-surface-variant uppercase tracking-widest">
-                        TANGGAL TRANSAKSI
+                        {activeTab === 'do' ? 'TANGGAL BERANGKAT' : 'TANGGAL TRANSAKSI'}
                       </p>
                       <p className="text-[9px] font-bold text-on-surface">
                         {formatDateIndo(data.date)} | {data.time} WIB
@@ -940,95 +1154,146 @@ export default function App() {
 
                   {/* Table */}
                   <div className="flex-grow">
-                    <table className="w-full text-left">
-                      <thead>
-                        <tr className="border-b border-[#0c678033]">
-                          <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">No</th>
-                          <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">Keterangan</th>
-                          <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-center">
-                            Qty ({activeTab === 'pakan' ? 'U' : 'L'})
-                          </th>
-                          <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-right">
-                            Harga/{activeTab === 'pakan' ? 'U' : 'L'}
-                          </th>
-                          <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-right">Subtotal</th>
-                        </tr>
-                      </thead>
-                      <tbody className="text-[9px]">
-                        <tr className="border-b border-[#bfc8cd1a]">
-                          <td className="py-3">1</td>
-                          <td className="py-3 font-bold">
-                            {activeTab === 'pakan' ? `Pakan: ${data.type}` : 'Susu Sapi Segar'}
-                          </td>
-                          <td className="py-3 text-center">{data.qty}</td>
-                          <td className="py-3 text-right">{formatRupiah(data.price)}</td>
-                          <td className="py-3 text-right font-black">{formatRupiah(subtotal)}</td>
-                        </tr>
-                        {data.shipping > 0 && (
-                          <tr className="border-b border-[#bfc8cd1a]">
-                            <td className="py-3">2</td>
-                            <td className="py-3 font-bold">Ongkos Kirim</td>
-                            <td className="py-3 text-center">-</td>
-                            <td className="py-3 text-right">-</td>
-                            <td className="py-3 text-right font-black">{formatRupiah(data.shipping)}</td>
+                    {activeTab === 'do' ? (
+                      <div className="space-y-6">
+                        <table className="w-full text-left">
+                          <thead>
+                            <tr className="border-b border-[#0c678033]">
+                              <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">No</th>
+                              <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">Deskripsi Barang</th>
+                              <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-right">Jumlah (Liter)</th>
+                            </tr>
+                          </thead>
+                          <tbody className="text-[9px]">
+                            <tr className="border-b border-[#bfc8cd1a]">
+                              <td className="py-3">1</td>
+                              <td className="py-3 font-bold">Susu Sapi Segar</td>
+                              <td className="py-3 text-right font-black">{data.qty} L</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                        
+                        <div className="grid grid-cols-2 gap-4 p-3 bg-[#0c67800d] rounded-lg">
+                          <div className="flex items-center gap-2">
+                            <Thermometer size={12} className="text-primary" />
+                            <div>
+                              <p className="text-[7px] font-bold text-on-surface-variant uppercase">Suhu Saat Berangkat</p>
+                              <p className="text-[10px] font-black text-primary">{data.temp || '-'} °C</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Clock size={12} className="text-primary" />
+                            <div>
+                              <p className="text-[7px] font-bold text-on-surface-variant uppercase">Jam Berangkat</p>
+                              <p className="text-[10px] font-black text-primary">{data.time} WIB</p>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <table className="w-full text-left">
+                        <thead>
+                          <tr className="border-b border-[#0c678033]">
+                            <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">No</th>
+                            <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase">Keterangan</th>
+                            <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-center">
+                              Qty ({activeTab === 'pakan' ? 'U' : 'L'})
+                            </th>
+                            <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-right">
+                              Harga/{activeTab === 'pakan' ? 'U' : 'L'}
+                            </th>
+                            <th className="py-2 text-[8px] font-bold text-on-surface-variant uppercase text-right">Subtotal</th>
                           </tr>
+                        </thead>
+                        <tbody className="text-[9px]">
+                          <tr className="border-b border-[#bfc8cd1a]">
+                            <td className="py-3">1</td>
+                            <td className="py-3 font-bold">
+                              {activeTab === 'pakan' ? `Pakan: ${data.type}` : 'Susu Sapi Segar'}
+                            </td>
+                            <td className="py-3 text-center">{data.qty}</td>
+                            <td className="py-3 text-right">{formatRupiah(data.price)}</td>
+                            <td className="py-3 text-right font-black">{formatRupiah(subtotal)}</td>
+                          </tr>
+                          {data.shipping > 0 && (
+                            <tr className="border-b border-[#bfc8cd1a]">
+                              <td className="py-3">2</td>
+                              <td className="py-3 font-bold">Ongkos Kirim</td>
+                              <td className="py-3 text-center">-</td>
+                              <td className="py-3 text-right">-</td>
+                              <td className="py-3 text-right font-black">{formatRupiah(data.shipping)}</td>
+                            </tr>
+                          )}
+                          {data.debt > 0 && (
+                            <tr className="border-b border-[#bfc8cd1a]">
+                              <td className="py-3">{data.shipping > 0 ? 3 : 2}</td>
+                              <td className="py-3 font-bold">Piutang Sebelumnya</td>
+                              <td className="py-3 text-center">-</td>
+                              <td className="py-3 text-right">-</td>
+                              <td className="py-3 text-right font-black">{formatRupiah(data.debt)}</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    )}
+                  </div>
+
+                  {/* Totals / Footer */}
+                  {activeTab !== 'do' ? (
+                    <div className="mt-4 pt-4 border-t-2 border-[#87ceeb33]">
+                      <div className="space-y-1">
+                        <div className="flex justify-between items-center text-[8px] text-on-surface-variant font-medium">
+                          <p>Subtotal Produk</p>
+                          <p>{formatRupiah(subtotal)}</p>
+                        </div>
+                        {data.shipping > 0 && (
+                          <div className="flex justify-between items-center text-[8px] text-on-surface-variant font-medium">
+                            <p>Ongkos Kirim</p>
+                            <p>{formatRupiah(data.shipping)}</p>
+                          </div>
                         )}
                         {data.debt > 0 && (
-                          <tr className="border-b border-[#bfc8cd1a]">
-                            <td className="py-3">{data.shipping > 0 ? 3 : 2}</td>
-                            <td className="py-3 font-bold">Piutang Sebelumnya</td>
-                            <td className="py-3 text-center">-</td>
-                            <td className="py-3 text-right">-</td>
-                            <td className="py-3 text-right font-black">{formatRupiah(data.debt)}</td>
-                          </tr>
+                          <div className="flex justify-between items-center text-[8px] text-on-surface-variant font-medium">
+                            <p>Piutang Sebelumnya</p>
+                            <p>{formatRupiah(data.debt)}</p>
+                          </div>
                         )}
-                      </tbody>
-                    </table>
-                  </div>
-
-                  {/* Totals */}
-                  <div className="mt-4 pt-4 border-t-2 border-[#87ceeb33]">
-                    <div className="space-y-1">
-                      <div className="flex justify-between items-center text-[8px] text-on-surface-variant font-medium">
-                        <p>Subtotal Produk</p>
-                        <p>{formatRupiah(subtotal)}</p>
                       </div>
-                      {data.shipping > 0 && (
-                        <div className="flex justify-between items-center text-[8px] text-on-surface-variant font-medium">
-                          <p>Ongkos Kirim</p>
-                          <p>{formatRupiah(data.shipping)}</p>
-                        </div>
-                      )}
-                      {data.debt > 0 && (
-                        <div className="flex justify-between items-center text-[8px] text-on-surface-variant font-medium">
-                          <p>Piutang Sebelumnya</p>
-                          <p>{formatRupiah(data.debt)}</p>
-                        </div>
-                      )}
+                      <div className="flex justify-between items-center mt-3 py-2.5 bg-[#0c67800d] px-3 rounded-md">
+                        <p className="text-[9px] font-black text-[#0c6780] uppercase tracking-widest">
+                          TOTAL KESELURUHAN
+                        </p>
+                        <p className="text-xs font-black text-[#0c6780]">
+                          {formatRupiah(total)}
+                        </p>
+                      </div>
                     </div>
-                    <div className="flex justify-between items-center mt-3 py-2.5 bg-[#0c67800d] px-3 rounded-md">
-                      <p className="text-[9px] font-black text-[#0c6780] uppercase tracking-widest">
-                        TOTAL KESELURUHAN
-                      </p>
-                      <p className="text-xs font-black text-[#0c6780]">
-                        {formatRupiah(total)}
-                      </p>
-                    </div>
-                  </div>
+                  ) : null}
 
-                  {/* Footer */}
+                  {/* Footer Signatures */}
                   <div className="mt-8 pt-4 border-t border-[#bfc8cd33]">
                     <p className="text-center text-[8px] italic text-on-surface-variant mb-6">
-                      {data.notes ? `"${data.notes}"` : `"Terima kasih atas kepercayaan Anda memilih produk kami."`}
+                      {activeTab === 'do' 
+                        ? "Barang telah diperiksa dan diterima dalam kondisi baik."
+                        : (data.notes ? `"${data.notes}"` : `"Terima kasih atas kepercayaan Anda memilih produk kami."`)}
                     </p>
-                    <div className="grid grid-cols-2 gap-12 text-center text-[9px] font-bold">
-                      <div className="space-y-12">
+                    <div className={`grid ${activeTab === 'do' ? 'grid-cols-3' : 'grid-cols-2'} gap-4 text-center text-[8px] font-bold`}>
+                      <div className="space-y-10">
                         <p>Penerima</p>
-                        <div className="border-b border-[#151d224d] mx-4" />
+                        <div className="border-b border-[#151d224d] mx-2" />
                       </div>
-                      <div className="space-y-12">
-                        <p>Hormat Kami</p>
-                        <p className="font-black">UD Adil Brothers</p>
+                      {activeTab === 'do' && (
+                        <div className="space-y-10">
+                          <p>Sopir (Driver)</p>
+                          <p className="font-black text-[9px]">{data.driver || '................'}</p>
+                          <div className="border-b border-[#151d224d] mx-2" />
+                        </div>
+                      )}
+                      <div className="space-y-10">
+                        <p>{activeTab === 'do' ? 'Pengirim' : 'Hormat Kami'}</p>
+                        <p className="font-black text-[9px]">UD Adil Brothers</p>
+                        {activeTab !== 'do' && <div className="border-b border-[#151d224d] mx-2" />}
+                        {activeTab === 'do' && <div className="border-b border-[#151d224d] mx-2" />}
                       </div>
                     </div>
                   </div>
@@ -1067,22 +1332,31 @@ export default function App() {
                     >
                       <div className="space-y-1 flex-grow">
                         <div className="flex items-center gap-2">
-                          <span className="text-[10px] font-black bg-primary/10 text-primary px-2 py-0.5 rounded uppercase tracking-wider">
-                            {inv.category}
+                          <span className={cn(
+                            "text-[10px] font-black px-2 py-0.5 rounded uppercase tracking-wider",
+                            inv.category === 'do' ? "bg-secondary/10 text-secondary" : "bg-primary/10 text-primary"
+                          )}>
+                            {inv.category === 'do' ? 'Surat Jalan' : inv.category}
                           </span>
                           <span className="text-[10px] font-bold text-on-surface-variant">
                             {inv.invNumber}
                           </span>
                         </div>
                         <h4 className="font-bold text-sm text-on-surface">
-                          {inv.buyer || (inv.category === 'eceran' ? 'Umum / Eceran' : 'Pembelian Pakan')}
+                          {inv.buyer || (inv.category === 'eceran' ? 'Umum / Eceran' : inv.category === 'do' ? '-' : 'Pembelian Pakan')}
                         </h4>
                         <p className="text-[10px] text-on-surface-variant">
                           {formatDateIndo(inv.date)} • {inv.time}
                         </p>
-                        <p className="text-xs font-black text-primary mt-1">
-                          {formatRupiah(inv.qty * inv.price + inv.shipping + inv.debt)}
-                        </p>
+                        {inv.category !== 'do' ? (
+                          <p className="text-xs font-black text-primary mt-1">
+                            {formatRupiah(inv.qty * inv.price + inv.shipping + inv.debt)}
+                          </p>
+                        ) : (
+                          <p className="text-xs font-black text-secondary mt-1">
+                            {inv.qty} Liter Susu
+                          </p>
+                        )}
                       </div>
                       <div className="flex gap-2">
                         <button 
