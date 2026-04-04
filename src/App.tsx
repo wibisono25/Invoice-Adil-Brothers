@@ -126,17 +126,25 @@ export default function App() {
         const mappedInvoices: InvoiceRecord[] = (invData || []).map(item => {
           let temp = '';
           let driver = '';
-          if (item.category === 'do') {
-            try {
-              const parsed = JSON.parse(item.notes);
+          let isDO = false;
+          
+          // Detect if it's a DO hidden inside 'eceran' category
+          try {
+            const parsed = JSON.parse(item.notes);
+            if (parsed.isDO || item.category === 'do') {
+              isDO = true;
               temp = parsed.temp || '';
               driver = parsed.driver || '';
-            } catch (e) {}
+            }
+          } catch (e) {
+            // Fallback for old 'do' category if it exists
+            if (item.category === 'do') isDO = true;
           }
+
           return {
             id: item.id,
             invNumber: item.inv_number,
-            category: item.category as TabType,
+            category: isDO ? 'do' : item.category as TabType,
             buyer: item.buyer,
             date: item.date,
             time: item.time,
@@ -284,22 +292,43 @@ export default function App() {
   };
 
   const handleSave = async () => {
+    // Validation
+    if (activeTab === 'do') {
+      if (!data.buyer.trim()) {
+        alert('Tujuan pengiriman harus diisi.');
+        return;
+      }
+      if (!data.driver.trim()) {
+        alert('Nama sopir harus diisi.');
+        return;
+      }
+      if (data.qty <= 0) {
+        alert('Jumlah susu (liter) harus lebih dari 0.');
+        return;
+      }
+    } else if (activeTab === 'umkm') {
+      if (!data.buyer) {
+        alert('Pilih pembeli UMKM terlebih dahulu.');
+        return;
+      }
+    }
+
     const finalNotes = activeTab === 'do' 
-      ? JSON.stringify({ temp: data.temp, driver: data.driver, originalNotes: data.notes })
+      ? JSON.stringify({ isDO: true, temp: data.temp, driver: data.driver, originalNotes: data.notes })
       : data.notes;
 
     const invoiceData = {
       inv_number: invNumber,
-      category: activeTab,
+      category: activeTab === 'do' ? 'eceran' : activeTab, // Compatibility mode: save DO as eceran
       buyer: data.buyer,
       date: data.date,
       time: data.time,
       qty: data.qty,
-      price: data.price,
+      price: activeTab === 'do' ? 0 : data.price,
       notes: finalNotes,
       shipping: data.shipping,
       debt: data.debt,
-      type: data.type
+      type: activeTab === 'do' ? 'Susu Segar (DO)' : data.type
     };
 
     try {
@@ -311,7 +340,10 @@ export default function App() {
           .select()
           .single();
         
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase Update Error:', error);
+          throw error;
+        }
         
         const mapped: InvoiceRecord = {
           id: updated.id,
@@ -340,7 +372,10 @@ export default function App() {
           .select()
           .single();
         
-        if (error) throw error;
+        if (error) {
+          console.error('Supabase Insert Error:', error);
+          throw error;
+        }
         
         const mapped: InvoiceRecord = {
           id: inserted.id,
@@ -379,9 +414,9 @@ export default function App() {
       });
       
       setActiveNav('history');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving invoice:', error);
-      alert('Gagal menyimpan invoice.');
+      alert(`Gagal menyimpan: ${error.message || 'Terjadi kesalahan pada database'}`);
     }
   };
 
@@ -389,14 +424,20 @@ export default function App() {
     let temp = '';
     let driver = '';
     let notes = inv.notes;
-    if (inv.category === 'do') {
-      try {
-        const parsed = JSON.parse(inv.notes);
+    let isDO = false;
+
+    try {
+      const parsed = JSON.parse(inv.notes);
+      if (parsed.isDO || inv.category === 'do') {
+        isDO = true;
         temp = parsed.temp || '';
         driver = parsed.driver || '';
         notes = parsed.originalNotes || '';
-      } catch (e) {}
+      }
+    } catch (e) {
+      if (inv.category === 'do') isDO = true;
     }
+
     setData({
       buyer: inv.buyer,
       date: inv.date,
@@ -411,7 +452,7 @@ export default function App() {
       driver
     });
     setInvNumber(inv.invNumber);
-    setActiveTab(inv.category);
+    setActiveTab(isDO ? 'do' : inv.category);
     setEditingId(inv.id);
     setActiveNav('editor');
   };
